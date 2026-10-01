@@ -1,0 +1,6 @@
+node_modules/
+config.local.json
+
+# Third-party content: kept locally, not published
+data/ain-repository.txt
+samples/

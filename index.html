@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AID Scenario Editor</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">AID Scenario Editor</div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" role="tab" data-tab="cards">Story Cards</button>
+    <button class="tab" role="tab" data-tab="scenario">Scenario</button>
+  </nav>
+  <button id="btnGenerate" class="accent" title="Generate with Claude (Ctrl+G)">✦ Generate</button>
+  <div class="file-info" title="Current file">
+    <span id="fileName">Untitled.scenario.json</span>
+    <span id="dirtyDot" class="dirty-dot" hidden title="Unsaved changes"></span>
+  </div>
+  <div class="file-actions">
+    <button id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+    <button id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+    <span class="sep"></span>
+    <button id="btnNew" title="Start a new, empty scenario">New</button>
+    <button id="btnOpen" title="Open a story card file or scenario project (Ctrl+O)">Open…</button>
+    <button id="btnImport" title="Append cards from another file">Import…</button>
+    <button id="btnSaveAs" title="Save to a new file (Ctrl+Shift+S)">Save As…</button>
+    <button id="btnSave" class="primary" title="Save (Ctrl+S)">Save</button>
+    <button id="btnSettings" class="icon" title="Claude settings" aria-label="Claude settings">⚙</button>
+    <button id="btnTheme" class="icon" title="Theme: auto" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main id="tab-cards" class="tab-panel">
+  <aside class="sidebar">
+    <div class="sidebar-controls">
+      <input id="search" type="search" placeholder="Search name, triggers, entry…  (Ctrl+F)" autocomplete="off">
+      <div class="row">
+        <select id="typeFilter" aria-label="Filter by type"></select>
+        <select id="sortMode" aria-label="Sort">
+          <option value="order">File order</option>
+          <option value="title">Name A–Z</option>
+          <option value="type">Type</option>
+          <option value="length">Entry length</option>
+        </select>
+      </div>
+      <div class="row small">
+        <label class="check"><input type="checkbox" id="issuesOnly"> Only with warnings <span id="issueCount" class="pill"></span></label>
+        <label class="limit" title="Warn when an entry is longer than this">Warn over <input id="limitInput" type="number" min="50" step="50"> chars</label>
+      </div>
+    </div>
+    <ul id="cardList" class="card-list" tabindex="0" aria-label="Story cards"></ul>
+    <div class="sidebar-footer">
+      <span id="countLabel" class="muted"></span>
+      <div class="row">
+        <button id="btnGenCards" class="accent" title="Generate cards with Claude">✦ Generate</button>
+        <button id="btnAdd" class="primary" title="New card (Alt+N)">+ New card</button>
+      </div>
+    </div>
+  </aside>
+  <section id="editor" class="editor"></section>
+</main>
+
+<main id="tab-scenario" class="scenario-panel" hidden>
+  <div class="sc-wrap">
+    <div class="sc-head">
+      <div>
+        <h2>Scenario details</h2>
+        <p class="muted">Copy each field into AI Dungeon's scenario editor. AI Dungeon imports story cards from a story card file; use <b>Export story cards</b> to make one.</p>
+      </div>
+      <div class="sc-actions">
+        <button data-act="export-cards">Export story cards…</button>
+        <button data-act="gen-fields" class="accent" title="Write or improve scenario fields from your story cards">✦ Generate fields…</button>
+        <button data-act="gen-scenario" class="accent" title="Write a whole new scenario, cards included">✦ Generate scenario…</button>
+      </div>
+    </div>
+    <div id="scenarioFields" class="sc-fields"></div>
+  </div>
+</main>
+
+<dialog id="genDialog" class="modal wide" aria-labelledby="genTitle">
+  <div class="modal-head"><h2 id="genTitle">✦ Generate with Claude</h2><button type="button" class="icon" data-close aria-label="Close">✕</button></div>
+  <div class="modal-body">
+    <div id="genForm">
+      <div class="seg" role="tablist">
+        <button type="button" data-mode="cards" class="active">Story cards</button>
+        <button type="button" data-mode="fields">Scenario fields</button>
+        <button type="button" data-mode="scenario">Full scenario</button>
+      </div>
+      <div class="field" data-for="fields">
+        <span>Fields to write</span>
+        <div id="genFieldChecks" class="field-checks"></div>
+      </div>
+      <label class="field"><span id="genPromptLabel">What should Claude write?</span>
+        <textarea id="genPrompt" rows="6"></textarea></label>
+      <div class="gen-opts" data-for="fields scenario">
+        <label class="field grow"><span>AI Dungeon model</span><select id="genAidModel"></select></label>
+        <label class="field"><span>Player character</span>
+          <select id="genPlayer">
+            <option value="ask-name">Player picks their name</option>
+            <option value="ask-details">Player creates their character</option>
+            <option value="defined">Defined by the scenario</option>
+          </select></label>
+        <label class="field"><span>Point of view</span>
+          <select id="genPov">
+            <option value="second">Second person</option>
+            <option value="third">Third person</option>
+          </select></label>
+      </div>
+      <div class="gen-checks" data-for="fields">
+        <label class="check"><input type="checkbox" id="genUseCards" checked> Give Claude the story cards (<b id="genCardCount">0</b> cards, full entries)</label>
+        <label class="check"><input type="checkbox" id="genRevise" checked> Improve existing text instead of starting over</label>
+      </div>
+      <p class="hint" data-for="fields">Claude reads your story cards and current scenario text. AI Instructions and the Author's Note are built from your AIN repository, using the set written for the chosen model. You can edit the results before applying them.</p>
+      <div class="gen-opts" data-for="cards">
+        <label class="field narrow"><span>How many</span><input id="genCount" type="number" min="1" max="50" placeholder="Auto"></label>
+        <label class="field grow"><span>Type</span><input id="genType" list="typeOptions" placeholder="Let Claude choose" autocomplete="off"></label>
+      </div>
+      <div class="gen-checks" data-for="cards">
+        <label class="check"><input type="checkbox" id="genUseIndex" checked> Show Claude the existing card list, so new cards fit in and don't repeat existing ones</label>
+        <label class="check"><input type="checkbox" id="genUseExamples"> Use the <b id="genSelCount">0</b> selected cards as style examples</label>
+        <label class="check"><input type="checkbox" id="genUseScenario" checked> Include the scenario details (title, description, plot essentials, opening)</label>
+      </div>
+      <div class="gen-opts" data-for="scenario">
+        <label class="field narrow"><span>Story cards</span><input id="genScCount" type="number" min="0" max="60" placeholder="Auto"></label>
+        <div class="radio-group">
+          <label class="check"><input type="radio" name="genScMode" value="replace" checked> Replace the current cards</label>
+          <label class="check"><input type="radio" name="genScMode" value="add"> Keep the current cards and add to them</label>
+        </div>
+      </div>
+      <p class="hint" data-for="scenario">Claude writes the title, description, tags, opening, plot essentials, AI Instructions (built from your AIN repository), Author's Note and story cards. You review everything before it's applied.</p>
+    </div>
+    <div id="genProgress" class="gen-progress" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <div><div id="genProgressText">Starting…</div><div id="genProgressSub" class="muted"></div></div>
+    </div>
+    <div id="genReview" hidden></div>
+    <div id="genError" class="issue warn" hidden></div>
+  </div>
+  <div class="modal-foot">
+    <span id="genModelLabel" class="muted"></span>
+    <button type="button" class="link" data-open-settings>Settings</button>
+    <div class="spacer"></div>
+    <div id="genButtons" class="row"></div>
+  </div>
+</dialog>
+
+<dialog id="settingsDialog" class="modal" aria-labelledby="setTitle">
+  <div class="modal-head"><h2 id="setTitle">Claude settings</h2><button type="button" class="icon" data-close aria-label="Close">✕</button></div>
+  <div class="modal-body">
+    <div class="radio-group">
+      <label class="check"><input type="radio" name="setProvider" value="claude-code"> <span><b>Claude subscription</b> (Pro / Max), through Claude Code. Uses your plan's usage limits, with no per-request charge.</span></label>
+      <label class="check"><input type="radio" name="setProvider" value="api"> <span><b>Anthropic API key</b>, billed per request from API credits.</span></label>
+    </div>
+    <div data-provider="claude-code">
+      <div id="cliStatus" class="issue info"></div>
+      <div id="cliHelp" class="hint">
+        To sign in, open a terminal and run <code>claude auth login</code>. A browser window opens; sign in with the
+        Claude account that has your plan. Then click <b>Check again</b>.
+      </div>
+      <div><button type="button" id="setRecheck" class="small">Check again</button></div>
+    </div>
+    <div data-provider="api">
+      <div id="keyStatus" class="issue info"></div>
+      <label class="field"><span>Anthropic API key</span>
+        <input id="setKey" type="password" placeholder="Paste a new key to replace the current one" autocomplete="off" spellcheck="false"></label>
+      <p class="hint">Saved on this computer in <code>config.local.json</code> and used only by the local server; it is never sent to the page. Create keys at console.anthropic.com. You can also set the <code>ANTHROPIC_API_KEY</code> environment variable instead.</p>
+    </div>
+    <div class="grid2">
+      <label class="field"><span>Model</span><select id="setModel"></select></label>
+      <label class="field"><span>Effort</span><select id="setEffort"></select></label>
+    </div>
+    <p class="hint">Higher effort spends longer thinking: often better results, but slower and more expensive.</p>
+  </div>
+  <div class="modal-foot">
+    <button type="button" id="setClearKey" class="danger">Remove saved key</button>
+    <div class="spacer"></div>
+    <button type="button" data-close>Cancel</button>
+    <button type="button" id="setSave" class="primary">Save</button>
+  </div>
+</dialog>
+
+<datalist id="typeOptions"></datalist>
+<div id="dropOverlay" class="drop-overlay" hidden><div>Drop a story card file or scenario project to open it</div></div>
+<div id="toast" class="toast" hidden></div>
+<input type="file" id="fileInput" accept=".json,application/json" hidden>
+
+<script src="js/files.js"></script>
+<script src="js/history.js"></script>
+<script src="js/storycards.js"></script>
+<script src="js/scenario.js"></script>
+<script src="js/generate.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
